@@ -26,7 +26,7 @@ def read_data(filename='weights.txt'):
 class Bot(object):
     def __init__(self, game, training=True):
         ''' Initialize a tetris AI object'''
-        self.weights = np.asmatrix([-0.03, -7.5, -3.5, 8, 3, 2.5, 5]).getT()
+        self.weights = np.asmatrix([-0.03, -7.5, -3.5, 80, 3, 2.5, 5]).getT()
         self.game = game
 
     def update(self, data):
