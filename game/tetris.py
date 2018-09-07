@@ -1,9 +1,6 @@
-import tkinter as tk
 import random as r
 import numpy as np
 import sys
-import copy
-from bot.bot import Bot
 import traceback
 
 shapes = [
@@ -40,11 +37,10 @@ colors = [
     '#232323'
 ]
 
-HEIGHTS = 0; HOLES = 1; BLOCKADES = 2;
 
 class Stone(object):
     def __init__(self, block_type, x_pos=0, y_pos=0, rotation=0):
-        ''' Initializes a tetris stone'''
+        """ Initializes a tetris stone"""
         self.block = shapes[block_type]
         self.type = block_type
         self.x_pos = x_pos
@@ -55,34 +51,37 @@ class Stone(object):
             self.rotate()
 
     def rotate(self):
-        ''' Rotates the block clockwise'''
-        self.block = [[self.block[y][x] for y in range(len(self.block) - 1, -1, -1)]
-                      for x in range(len(self.block[0]))]
+        """ Rotates the block clockwise"""
+        self.block = [
+            [self.block[y][x] for y in range(len(self.block) - 1, -1, -1)]
+            for x in range(len(self.block[0]))]
         self.rotation = (self.rotation + 1) % 4
 
     def move(self, x_dist, y_dist):
-        ''' Moves the piece by x_dist and y_dist'''
+        """ Moves the piece by x_dist and y_dist"""
         self.x_pos += x_dist
         self.y_pos += y_dist
 
     def get_piece(self):
-        ''' Returns the piece in a form readable to the board'''
+        """ Returns the piece in a form readable to the board"""
         piece = []
         for x in range(len(self.block[0])):
             column = []
             for y in range(len(self.block)):
-                hasBlock = self.block[y][x] > 0
+                has_block = self.block[y][x] > 0
                 pos = (x + self.x_pos, y + self.y_pos)
-                if (hasBlock):
-                    column.append([pos, [True, colors[self.type + 1], False]])   # pos, (exists, color, blockade)
+                if has_block:
+                    # pos, (exists, color)
+                    column.append([pos, [True, colors[self.type + 1]]])
                 else:
                     column.append([pos, [False]])
             piece.append(column)
 
         return piece
 
-    def clone(self, block_type='None', x_pos='None', y_pos='None', rotation='None'):
-        ''' Returns a copy of this stone'''
+    def clone(self, block_type='None', x_pos='None', y_pos='None',
+              rotation='None'):
+        """ Returns a copy of this stone"""
         if block_type is 'None':
             block_type = self.type
         if x_pos is 'None':
@@ -94,106 +93,83 @@ class Stone(object):
         return Stone(block_type, x_pos=x_pos, y_pos=y_pos, rotation=rotation)
 
     def width(self):
-        ''' Returns the width of the piece'''
+        """ Returns the width of the piece"""
         return len(self.block[0])
 
 
 class Tetris(object):
-    def __init__(self, level=0, is_human=True, time_limit=-1):
-        ''' Initializes a tetris game object'''
+    def __init__(self, level=0, time_limit=-1):
+        """ Initializes a tetris game object"""
         self.level = level
         self.width = 10
         self.height = 22
 
-        # Board dimensions: (x pos, y pos, (state of position, color of block))
-        self.board = [[[False,] for n in range(self.height)]
-                      for m in range(self.width)]
-        self.piece_list = [];
+        # Bord elements are 0 for empty and 1 for filled
+        self.board = np.zeros((self.height, self.width))
+        self.colors = np.zeros((self.height, self.width), dtype=np.dtype("a7"))     # dtype: 7 character string
+        self.piece_list = []
 
         self.piece = None
         self.next_piece = None
         self.new_piece()
         self.points = 0
 
-        self.bot = None
-        self.serve_data = None
-        self.bot_data = [0, 0, 0]
-        if not is_human:
-            self.bot = Bot(self)
-            self.serve_data = self.get_data()
-
         self.frames_elapsed = 0
         self.time_limit = time_limit
         self.time_elapsed = 0
         self.game_over = False
 
-
     def update(self):
-        '''Updates the game by {fps} times a second'''
+        """Updates the game by {fps} times a second"""
 
         if self.time_elapsed >= self.time_limit > -1:
             self.game_over = True
 
-        #if self.frames_elapsed >= self.fps / 2 and not self.game_over:
+        # if self.frames_elapsed >= self.fps / 2 and not self.game_over:
         if self.frames_elapsed >= 60 and not self.game_over:
             self.frames_elapsed = 0
 
             if not self.check_move(0, 1):
-                self.game_over, self.board = self.apply_piece()
+                self.game_over = self.apply_piece()
                 if not self.game_over:
                     self.new_piece()
-                if self.bot:
-                    self.serve_data = self.get_data()
             else:
                 self.move_down()
 
             self.check_rows()
 
-        if self.bot:
-            self.bot.update(self.serve_data)
-
         self.frames_elapsed += 1
-        #if self.time_limit > -1: self.time_elapsed += 1.0 / self.fps
-        if self.time_limit > -1: self.time_elapsed += 1.0 / 120
-
+        # if self.time_limit > -1: self.time_elapsed += 1.0 / self.fps
+        if self.time_limit > -1:
+            self.time_elapsed += 1.0 / 120
 
     def quit_game(self, event=None):
-        # print(self.get_piece_data(self.get_future_position(), self.board))
-        # print(
-        #     [self.get_column_data(self.apply_piece(piece=self.get_future_position(),o_board=self.board)[1], column=i)
-        #      for i in range(self.width)])
         sys.exit()
-
 
     def move_left(self, event=None):
         # self.piece.move(-1, 0)
         self.update_piece(-1, 0)
 
-
     def move_right(self, event=None):
         # self.piece.move(1, 0)
         self.update_piece(1, 0)
-
 
     def move_down(self, event=None):
         # self.piece.move(0, 1)
         self.update_piece(0, 1)
 
-
     def rotate(self, event=None):
         if self.check_rotate():
             self.piece.rotate()
 
-
     def update_piece(self, x, y):
-        '''Update piece on board'''
+        """Update piece on board"""
         if self.check_move(x, y):
             self.piece.move(x, y)
 
-
     def check_move(self, x, y, piece=None):
-        ''' Determines whether a piece is able to move'''
-        canMove = True
+        """ Determines whether a piece is able to move"""
+        can_move = True
 
         if not piece:
             piece = self.piece
@@ -206,26 +182,24 @@ class Tetris(object):
                 if not pos[1] + y < 0:  # ignore this block
                     if ((pos[0] + x < 0) or
                             (pos[0] + x > self.width - 1) or
-                        # (pos[1] + y < 0) or
+                            # (pos[1] + y < 0) or
                             (pos[1] + y > self.height - 1)):
-                        canMove = False
+                        can_move = False
                     elif data[0]:  # Block exists
-                        canMove = (canMove and not
-                        self.board[pos[0] + x][pos[1] + y][0])
+                        can_move = (can_move and not
+                                    self.board[pos[1] + y, pos[0] + x])
 
-        return canMove
-
+        return can_move
 
     def check_rotate(self):
-        ''' Determines whether a piece is able to rotate'''
+        """ Determines whether a piece is able to rotate"""
         rot_piece = self.piece.clone()
         rot_piece.rotate()
 
         return self.check_move(0, 0, rot_piece)
 
-
     def new_piece(self):
-        ''' Update with new pieces'''
+        """ Update with new pieces"""
         if not self.next_piece:
             self.next_piece = self.get_piece()
 
@@ -238,9 +212,8 @@ class Tetris(object):
 
         self.next_piece = self.get_piece()
 
-
     def get_piece(self):
-        ''' Create a new piece'''
+        """ Create a new piece"""
         block_type = int(r.random() * len(shapes))
         # block_type = 5
         x_pos = int(r.random() * (self.width - len(shapes[block_type][0])))
@@ -248,34 +221,25 @@ class Tetris(object):
 
         return piece
 
-
     def get_future_position(self, piece=None):
-        ''' Calculate position if piece moves straight down'''
+        """ Calculate position if piece moves straight down"""
         if not piece:
             piece = self.piece
 
-        fut_piece = piece.clone()
+        future_piece = piece.clone()
         valid_pos = True
-        # print("init_pos: {}, {}, {}".format(fut_piece.y_pos, piece.rotation, fut_piece.rotation))
         while valid_pos:
-            valid_pos = self.check_move(0, 1, piece=fut_piece)
+            valid_pos = self.check_move(0, 1, piece=future_piece)
             if valid_pos:
-                fut_piece.move(0, 1)
-                # if len(fut_piece.block) + fut_piece.y_pos > self.height:
-                # 	print("{}, {}, {}".format(len(fut_piece.block), fut_piece.y_pos, fut_piece.rotation))
-                # 	print(fut_piece.block)
-        return fut_piece
+                future_piece.move(0, 1)
+        return future_piece
 
-
-    def apply_piece(self, piece=None, o_board=None):
-        ''' Places all blocks of the piece onto the board'''
+    def apply_piece(self, piece=None):
+        """ Places all blocks of the piece onto the board"""
         if not piece:
             piece = self.piece
-        if not o_board:
-            o_board = self.board
-        board = copy.deepcopy(o_board)
 
-        isGameOver = False
+        is_game_over = False
 
         stone = piece.get_piece()
         for i in range(len(stone)):
@@ -285,169 +249,39 @@ class Tetris(object):
 
                 if data[0]:
                     if pos[1] <= 0:
-                        isGameOver = True
+                        is_game_over = True
                     else:
                         try:
-                            board[pos[0]][pos[1]] = data
+                            self.board[pos[1], pos[0]] = data[0]
+                            self.colors[pos[1], pos[0]] = data[1]
                         except IndexError:
                             traceback.print_exc()
-                            # print("{}, {}".format(pos[0],pos[1]))
-        return (isGameOver, board)
-
+        return is_game_over
 
     def check_rows(self):
-        ''' Checks each row for completion, and calculates points'''
+        """ Checks each row for completion, and calculates points"""
         rows_done = []
         has_block = True
-        j = self.height-1
+        j = self.height - 1
         while j > -1 and has_block:
             full_row = True  # checks the row for fullness
             has_block = False
             i = 0
             while i < self.width and (full_row or not has_block):
-                full_row = full_row and self.board[i][j][0]
-                has_block = has_block or self.board[i][j][0]
+                full_row = full_row and self.board[j, i]
+                has_block = has_block or self.board[j, i]
                 i += 1
             if full_row:
                 rows_done.append(j)
             j -= 1
 
         if len(rows_done) > 0:
-            self.update_info_clear(rows_done)
-
-            del_count = 0
-            for j in rows_done:
-                for i in range(self.width):
-                    del self.board[i][j+del_count]
-                    self.board[i] = [[False]] + self.board[i]
-                del_count += 1
+            self.board = np.vstack((np.zeros((len(rows_done), self.width)),
+                                    np.delete(self.board, rows_done, axis=0)))
 
         base_points = (0, 40, 100, 300, 1200)
         self.points += base_points[len(rows_done)] * (self.level + 1)
 
-
-    def isGameOver(self):
-        ''' Returns whether the game has ended'''
+    def is_game_over(self):
+        """ Returns whether the game has ended"""
         return self.game_over
-
-
-    def update_info_clear(self, rows, board=None, b_data=None):
-        if not board:
-            board = copy.deepcopy(self.board)
-        if not b_data:
-            b_data = copy.copy(self.bot_data)
-
-        rows = sorted(rows)
-
-        for i in range(rows[0], self.height):
-            for j in range(self.width):
-                if i in rows:
-                    b_data[HEIGHTS] -= self.height - i
-                    if board[j][i][2]:
-                        b_data[BLOCKADES] -= 1
-                else:
-                    b_data[HEIGHTS] -= len(rows)
-
-        return b_data
-
-
-    def get_piece_data(self, bot_data, board, old_board, piece):
-        """
-        Heights, Blockade, Holes, Clear, Piece Data
-        """
-        wall_count = 0
-        floor_count = 0
-        block_count = 0
-        clear_count = 0
-
-        b_data = copy.copy(bot_data)
-
-        stone = piece.get_piece()
-        for i in range(len(stone[0])):
-            is_full_row = True
-            for j in range(self.width):
-                if not board[j][i + piece.y_pos][0]:
-                    is_full_row = False
-                if piece.x_pos <= j < piece.x_pos + piece.width():
-                    pos = stone[j-piece.x_pos][i][0]
-                    data = stone[j-piece.x_pos][i][1]
-
-                    if data[0]:
-                        b_data[HEIGHTS] += self.height - pos[1]   # Add heights
-
-                        if not old_board[pos[0]][pos[1]][0]:
-                            b_data[HOLES] -= 1
-
-                        if 0 < pos[1] < self.height-1 and ((board[pos[0]][pos[1]+1][0] and board[pos[0]][pos[1]+1][2])
-                                                       or not board[pos[0]][pos[1]+1][0]):
-                            b_data[BLOCKADES] += 1
-                            board[pos[0]][pos[1]][2] = True
-
-                        y = pos[1]+1
-                        while 0 < y < self.height and not board[pos[0]][y][0]:
-                            b_data[HOLES] += 1
-                            y += 1
-
-                        if pos[0] == 0 or pos[0] == self.width - 1:
-                            wall_count += 1
-                        if pos[1] == self.height - 1:
-                            floor_count += 1
-
-                        if pos[0] < self.width - 1 and old_board[pos[0] + 1][pos[1]][0]:
-                            block_count += 1
-                        if pos[0] > 0 and old_board[pos[0] - 1][pos[1]][0]:
-                            block_count += 1
-                        if pos[1] < self.height - 1 and old_board[pos[0]][pos[1] + 1][0]:
-                            block_count += 1
-                        if pos[1] > 0 and old_board[pos[0]][pos[1] - 1][0]:
-                            block_count += 1
-            if is_full_row:
-                clear_count += 1
-        return np.array(b_data), np.array((clear_count, block_count, wall_count, floor_count))
-
-
-    def get_data(self, piece=None, next_piece=None, o_board=None, b_data=None):
-        ''' Returns statistics of the current game state for all possibilities'''
-        if not piece:
-            piece = self.piece
-        if not next_piece:
-            next_piece = self.next_piece
-        if not o_board:
-            o_board = self.board
-        if not b_data:
-            b_data = self.bot_data
-        data1 = b_data
-        board1 = copy.deepcopy(o_board)
-
-        data = []
-        for r1 in range(4):  # Rotations for this piece
-            this_piece = piece.clone(rotation=r1, x_pos=0, y_pos=0)
-
-            data_x1 = []
-            for x1 in range(self.width - len(this_piece.block[0]) + 1):  # Positions for this piece
-                this_piece.x_pos = x1
-                t_piece = self.get_future_position(this_piece)
-                _, board2 = self.apply_piece(piece=t_piece, o_board=board1)
-
-                data_p1 = self.get_piece_data(data1, board2, board1, t_piece)
-
-                data_r2 = []
-                for r2 in range(4):  # Rotations for next piece
-                    this_next_piece = next_piece.clone(rotation=r2, x_pos=0, y_pos=0)
-
-                    data_x2 = []
-                    for x2 in range(self.width - len(this_next_piece.block[0]) + 1):  # Positions for next piece
-                        this_next_piece.x_pos = x2
-                        n_piece = self.get_future_position(this_next_piece)
-                        _, board = self.apply_piece(piece=n_piece, o_board=board2)
-
-                        data_p2 = self.get_piece_data(data_p1[0], board, board2, n_piece)
-
-                        data_x2.append(np.hstack((data_p1[0] + data_p2[0], data_p1[1] + data_p2[1])))
-
-                    data_r2.append(data_x2)
-                data_x1.append(data_r2)
-            data.append(data_x1)
-
-        return data
-
