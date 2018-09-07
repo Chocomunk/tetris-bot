@@ -3,7 +3,7 @@ import random as r
 import numpy as np
 import sys
 import copy
-from bot import Bot
+from bot.bot import Bot
 import traceback
 
 shapes = [
