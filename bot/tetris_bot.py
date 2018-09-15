@@ -1,12 +1,37 @@
 import numpy as np
 import tensorflow as tf
+from bot.tetris_environment import TetrisEnvironment
+from bot.DDQNetwork import DDQNetwork
 
 
 class TetrisBot(object):
-    def __init__(self, training=True):
-        """ Initialize a tetris AI object"""
-        # TODO: fill
 
-    def update(self):
+    def __init__(self, tetris_instance, model_path, name):
+        """ Initialize a tetris AI object"""
+        self.env = TetrisEnvironment(tetris_instance=tetris_instance)
+        self.model_path = model_path
+        self.model = DDQNetwork(512, [22, 10], 4, name=name)
+        self.last_state = self.env.tetris_instance.serve_image()
+        self.saver = tf.train.Saver()
+
+    def init(self, sess):
+        print("Loading Saved Model")
+        checkpt = tf.train.get_checkpoint_state(self.model_path)
+        if checkpt is None:
+            print("Error: no saved checkpoint")
+            return
+        print("Found model at {}".format(checkpt))
+        self.saver.restore(sess, checkpt.model_checkpoint_path)
+        print("Model loaded")
+
+    def update(self, sess):
         """ Called every drawn frame, lets the bot make decisions"""
-        # TODO: fill
+        a, qs, con = sess.run([self.model.best_action, self.model.outputQ, self.model.conv_out],
+                         feed_dict={self.model.state_image: [self.last_state]})
+        a = a[0]
+        print("{}: {}, {}".format(a, qs, np.sum(con)))
+        s1, r, d = self.env.step(a)
+        self.last_state = s1
+
+        return s1, d
+

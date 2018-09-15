@@ -1,15 +1,17 @@
 import tkinter as tk
 import numpy as np
+from util.prioritized_experience_replay import PrioritizedExperienceReplay
 
 
 class TetrisGUI(object):
-    def __init__(self, tetris_game, block_dim=28, fps=120, time_scalar=1, bind_controls=True):
+    def __init__(self, tetris_game, block_dim=28, fps=120, time_scalar=1, bind_controls=True, replay_path=None, log_events=False):
         """ Initializes a tetris GUI wrapper"""
         self.tetris_game = tetris_game
 
         self.block_dim = block_dim
         self.fps = fps
         self.tick_ms = int(1000 / (fps * time_scalar))
+        self.dt = 1000. / fps
 
         self.root = tk.Tk()
         self.root.title = "Tetris"
@@ -19,11 +21,35 @@ class TetrisGUI(object):
                                 height=block_dim * tetris_game.height, bd=5,
                                 highlightthickness=0, bg='#192317')
 
+        self.log_events = log_events
+        if log_events:
+            self.replay_path = replay_path
+            try:
+                self.buffer = PrioritizedExperienceReplay.from_file(replay_path)
+            except FileNotFoundError:
+                self.buffer = PrioritizedExperienceReplay()
+            self.last_state = tetris_game.serve_image()
+            self.action = -1
+
+        self.bot = None
+        self.sess = None
+
         if bind_controls:
             self.bind_canvas(tetris_game)
-        self.canvas.bind("<Escape>", tetris_game.quit_game)
+        self.canvas.bind("<Escape>", self.quit_game)
         self.canvas.focus_set()
 
+        self.game_over = False
+
+    def start(self, bot=None, sess=None):
+        if bot is not None:
+            if sess is None:
+                print("Error starting Tetris GUI: bot with no sess specified")
+                return
+            else:
+                self.bot = bot
+                self.bot.env.dt = self.dt
+                self.sess = sess
         self.update()
         self.root.mainloop()
 
@@ -31,7 +57,19 @@ class TetrisGUI(object):
         """ Updates the game by {fps} times a second"""
         self.canvas.delete('all')
 
-        self.tetris_game.update()
+        pre_points = self.tetris_game.points
+        if self.bot is None:
+            s1, d = self.tetris_game.update(self.dt)
+        else:
+            s1, d = self.bot.update(self.sess)
+
+        if self.log_events and self.action >= 0 and not self.game_over:
+            step_reward = (self.tetris_game.points - pre_points)
+            self.buffer.add(np.abs(step_reward), (self.last_state, self.action, step_reward, s1, d))
+            self.last_state = s1
+
+        if d:
+            self.game_over = True
 
         self.draw_board(self.tetris_game)
         self.draw_auxillary_elements(self.tetris_game)
@@ -79,7 +117,7 @@ class TetrisGUI(object):
 
         # Draw Labels
         self.canvas.create_text(40, 15, text="Points: {}".format(
-            tetris_instance.points),
+                                tetris_instance.points),
                                 fill='#ffff99')
         self.canvas.create_text(self.block_dim * (width + 2) + 10,
                                 self.block_dim * (height / 2 - 2) + 10,
@@ -109,9 +147,28 @@ class TetrisGUI(object):
                                      5 + (x + 1) * self.block_dim,
                                      (y + 1) * self.block_dim, fill=fill, outline=outline)
 
+    def quit_game(self, event=None):
+        if self.log_events:
+            self.buffer.save_file(self.replay_path)
+        self.root.destroy()
+
+    def _register_action(self, action):
+        self.action = action
+
     def bind_canvas(self, tetris_instance):
         """Handles binding of canvas events"""
-        self.canvas.bind("<Left>", tetris_instance.move_left)
-        self.canvas.bind("<Right>", tetris_instance.move_right)
-        self.canvas.bind("<Down>", tetris_instance.move_down)
-        self.canvas.bind("<Up>", tetris_instance.rotate)
+        if self.log_events:
+            left_func = lambda _: (tetris_instance.move_left(), self._register_action(0))
+            right_func = lambda _: (tetris_instance.move_right(), self._register_action(1))
+            down_func = lambda _: (tetris_instance.move_down(), self._register_action(2))
+            rotate = lambda _: (tetris_instance.rotate(), self._register_action(3))
+
+            self.canvas.bind("<Left>", left_func)
+            self.canvas.bind("<Right>", right_func)
+            self.canvas.bind("<Down>", down_func)
+            self.canvas.bind("<Up>", rotate)
+        else:
+            self.canvas.bind("<Left>", tetris_instance.move_left)
+            self.canvas.bind("<Right>", tetris_instance.move_right)
+            self.canvas.bind("<Down>", tetris_instance.move_down)
+            self.canvas.bind("<Up>", tetris_instance.rotate)

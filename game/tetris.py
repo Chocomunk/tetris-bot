@@ -1,6 +1,5 @@
 import random as r
 import numpy as np
-import sys
 import traceback
 
 shapes = [
@@ -98,14 +97,14 @@ class Stone(object):
 
 
 class Tetris(object):
-    def __init__(self, level=0, time_limit=-1):
+
+    def __init__(self, time_limit=-1):
         """ Initializes a tetris game object"""
-        self.level = level
         self.width = 10
         self.height = 22
 
         # Bord elements are 0 for empty and 1 for filled
-        self.board = np.zeros((self.height, self.width))
+        self.board = np.zeros((self.height, self.width), dtype=np.int8)
         self.colors = np.zeros((self.height, self.width), dtype=np.dtype("a7"))     # dtype: 7 character string
         self.piece_list = []
 
@@ -114,37 +113,35 @@ class Tetris(object):
         self.new_piece()
         self.points = 0
 
-        self.frames_elapsed = 0
-        self.time_limit = time_limit
         self.time_elapsed = 0
+        self.time_limit = time_limit
+        self.total_time = 0
         self.game_over = False
 
-    def update(self):
+    def update(self, dt):
         """Updates the game by {fps} times a second"""
 
-        if self.time_elapsed >= self.time_limit > -1:
+        if self.total_time >= self.time_limit > -1:
             self.game_over = True
 
         # if self.frames_elapsed >= self.fps / 2 and not self.game_over:
-        if self.frames_elapsed >= 60 and not self.game_over:
-            self.frames_elapsed = 0
+        if self.time_elapsed >= 500 and not self.game_over:
+            self.time_elapsed = 0
 
             if not self.check_move(0, 1):
                 self.game_over = self.apply_piece()
                 if not self.game_over:
                     self.new_piece()
+                self.check_rows()
             else:
                 self.move_down()
 
-            self.check_rows()
-
-        self.frames_elapsed += 1
+        self.time_elapsed += dt
         # if self.time_limit > -1: self.time_elapsed += 1.0 / self.fps
         if self.time_limit > -1:
-            self.time_elapsed += 1.0 / 120
+            self.total_time += dt
 
-    def quit_game(self, event=None):
-        sys.exit()
+        return self.serve_image(), self.game_over
 
     def move_left(self, event=None):
         # self.piece.move(-1, 0)
@@ -171,7 +168,7 @@ class Tetris(object):
         """ Determines whether a piece is able to move"""
         can_move = True
 
-        if not piece:
+        if piece is None:
             piece = self.piece
         stone = piece.get_piece()
         for i in range(len(stone)):
@@ -223,7 +220,7 @@ class Tetris(object):
 
     def get_future_position(self, piece=None):
         """ Calculate position if piece moves straight down"""
-        if not piece:
+        if piece is None:
             piece = self.piece
 
         future_piece = piece.clone()
@@ -234,10 +231,14 @@ class Tetris(object):
                 future_piece.move(0, 1)
         return future_piece
 
-    def apply_piece(self, piece=None):
+    def apply_piece(self, piece=None, board=None, board_colors=None, compute_colors=True):
         """ Places all blocks of the piece onto the board"""
-        if not piece:
+        if piece is None:
             piece = self.piece
+        if board is None:
+            board = self.board
+        if board_colors is None and compute_colors:
+            board_colors = self.colors
 
         is_game_over = False
 
@@ -252,8 +253,9 @@ class Tetris(object):
                         is_game_over = True
                     else:
                         try:
-                            self.board[pos[1], pos[0]] = data[0]
-                            self.colors[pos[1], pos[0]] = data[1]
+                            board[pos[1], pos[0]] = data[0]
+                            if compute_colors:
+                                board_colors[pos[1], pos[0]] = data[1]
                         except IndexError:
                             traceback.print_exc()
         return is_game_over
@@ -280,7 +282,12 @@ class Tetris(object):
                                     np.delete(self.board, rows_done, axis=0)))
 
         base_points = (0, 40, 100, 300, 1200)
-        self.points += base_points[len(rows_done)] * (self.level + 1)
+        self.points += base_points[len(rows_done)]
+
+    def serve_image(self):
+        new_board = np.copy(self.board)
+        self.apply_piece(board=new_board, compute_colors=False)
+        return new_board.reshape(22, 10, 1)
 
     def is_game_over(self):
         """ Returns whether the game has ended"""
