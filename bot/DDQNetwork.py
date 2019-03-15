@@ -14,7 +14,7 @@ class DDQNetwork(object):
                 if input_state is None else tf.placeholder_with_default(input_state, shape=[None, *image_size, 1])
 
             # Feature-detecting convolutions
-            with slim.arg_scope([slim.conv2d], padding='VALID'):
+            with slim.arg_scope([slim.conv2d], padding='SAME'):
                 self.conv_out = slim.stack(self.state_image, slim.conv2d, [
                     # num_outputs, kernel_size, stride
                     (16,           [2, 2], [1, 1]),

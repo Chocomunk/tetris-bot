@@ -287,7 +287,7 @@ class Tetris(object):
     def serve_image(self):
         new_board = np.copy(self.board)
         self.apply_piece(board=new_board, compute_colors=False)
-        return new_board.reshape(22, 10, 1)
+        return 1-new_board.reshape(22, 10, 1)
 
     def is_game_over(self):
         """ Returns whether the game has ended"""

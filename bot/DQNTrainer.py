@@ -194,7 +194,7 @@ class DQNTrainer(object):
             #                                            self.actions: [a]})
 
             episode_buffer.add(np.abs(error), (s, a, r, s1, d))
-            if self.total_steps % 100 == 0:
+            if self.total_steps % 1000 == 0:
                 print(self.total_episodes, self.total_steps, a, r_total, error, conv, type_a)
             self.total_steps += 1
 

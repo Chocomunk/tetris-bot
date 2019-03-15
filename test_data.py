@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import random
 
+
 class DataBuffer(object):
 
     def __init__(self, buffer_size):
