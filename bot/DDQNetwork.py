@@ -1,17 +1,15 @@
-import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 
 class DDQNetwork(object):
 
-    def __init__(self, conv_out_dim, image_size, num_actions, name, input_state=None):
+    def __init__(self, conv_out_dim, image_size, num_actions, name):
         self.num_actions = num_actions
         self.image_size = image_size
 
         with tf.name_scope(name=name):
-            self.state_image = tf.placeholder(shape=[None, *image_size, 1], dtype=tf.float32) \
-                if input_state is None else tf.placeholder_with_default(input_state, shape=[None, *image_size, 1])
+            self.state_image = tf.placeholder(shape=[None, *image_size, 1], dtype=tf.float32)
 
             # Feature-detecting convolutions
             with slim.arg_scope([slim.conv2d], padding='SAME'):
@@ -23,23 +21,9 @@ class DDQNetwork(object):
                     (conv_out_dim, [3, 3], [1, 1])
                 ])
 
-            c_out_split = conv_out_dim * 45 // 2
             xavier_init = slim.xavier_initializer()
 
             # Split advantage and value functions
-
-            # self.advantage = slim.fully_connected(self.advantage_stream, num_actions)
-            # self.value = slim.fully_connected(self.value_stream, 1)
-
-            # self.advantage_stream_conv, self.value_stream_conv = tf.split(self.conv_out, 2, axis=3)
-            # self.advantage_stream = slim.flatten(self.advantage_stream_conv)
-            # self.value_stream = slim.flatten(self.value_stream_conv)
-
-            # self.advantage_weights = tf.Variable(xavier_init([c_out_split, num_actions]))
-            # self.value_weights = tf.Variable(xavier_init([c_out_split, 1]))
-            # self.advantage = tf.matmul(self.advantage_stream, self.advantage_weights)
-            # self.value = tf.matmul(self.value_stream, self.value_weights)
-
             self.conv_flatten = slim.flatten(self.conv_out)
 
             self.value_fc = tf.layers.dense(inputs=self.conv_flatten, units=512, kernel_initializer=xavier_init)

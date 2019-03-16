@@ -1,7 +1,6 @@
 import random
 import os
 import pickle
-import numpy as np
 
 from util.sum_tree_buffer import SumTreeBuffer
 
@@ -21,8 +20,8 @@ class PrioritizedExperienceReplay(object):
         priority = self._get_priority(error)
         self._buffer.add(priority, experience)
 
-    def extend(self, other_PER):
-        self._buffer.extend(other_PER._buffer)
+    def extend(self, other_per):
+        self._buffer.extend(other_per._buffer)
 
     def update_errors(self, idx, error):
         priority = self._get_priority(error)
@@ -40,6 +39,7 @@ class PrioritizedExperienceReplay(object):
                         b = a + bucket_width
                         s = random.uniform(a, b)
                         idx, data = self._buffer.get_entry(s)
+                    # noinspection PyTypeChecker
                     yield data + (idx,)
 
         return generator_func

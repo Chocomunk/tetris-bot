@@ -1,4 +1,3 @@
-import numpy as np
 from game.tetris import Tetris
 
 default_action_mapping = [
@@ -10,7 +9,9 @@ default_action_mapping = [
 
 class TetrisEnvironment(object):
 
-    def __init__(self, tetris_instance=None, action_map=default_action_mapping, time_limit=-1, dt=(1000. / 120)):
+    def __init__(self, tetris_instance=None, action_map=None, time_limit=-1, dt=(1000. / 120)):
+        if action_map is None:
+            action_map = default_action_mapping
         self.time_limit = time_limit
         self.dt = dt
         self.action_map = action_map

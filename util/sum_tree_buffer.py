@@ -51,10 +51,10 @@ class SumTreeBuffer(object):
 
     def extend(self, other):
         if other.full:
-            max_idx = other._size
+            max_idx = len(other)
         else:
             max_idx = other._data_idx + 1
-        idx_diff = other._size - 1
+        idx_diff = len(other) - 1
         for i in range(max_idx):
             self.add(other._tree[i + idx_diff], other._data[i])
 
@@ -68,3 +68,6 @@ class SumTreeBuffer(object):
         idx = self.get_index(value)
         entry = self.get_at_index(idx - self._size + 1)
         return idx, entry
+
+    def __len__(self):
+        return self._size
