@@ -110,6 +110,7 @@ class Tetris(object):
 
         self.piece = None
         self.next_piece = None
+        self.piece_moved = False
         self.new_piece()
         self.points = 0
 
@@ -127,6 +128,7 @@ class Tetris(object):
         # if self.frames_elapsed >= self.fps / 2 and not self.game_over:
         if self.time_elapsed >= 500 and not self.game_over:
             self.time_elapsed = 0
+            self.piece_moved = True
 
             if not self.check_move(0, 1):
                 self.game_over = self.apply_piece()
@@ -141,7 +143,10 @@ class Tetris(object):
         if self.time_limit > -1:
             self.total_time += dt
 
-        return self.serve_image(), self.game_over
+        image = self.serve_image() if self.piece_moved else None
+        self.piece_moved = False
+
+        return image, self.game_over
 
     def move_left(self, event=None):
         # self.piece.move(-1, 0)
@@ -156,11 +161,13 @@ class Tetris(object):
         self.update_piece(0, 1)
 
     def rotate(self, event=None):
+        self.piece_moved = True
         if self.check_rotate():
             self.piece.rotate()
 
     def update_piece(self, x, y):
         """Update piece on board"""
+        self.piece_moved = True
         if self.check_move(x, y):
             self.piece.move(x, y)
 
@@ -287,7 +294,7 @@ class Tetris(object):
     def serve_image(self):
         new_board = np.copy(self.board)
         self.apply_piece(board=new_board, compute_colors=False)
-        return 1-new_board.reshape(22, 10, 1)
+        return new_board.reshape(22, 10)
 
     def is_game_over(self):
         """ Returns whether the game has ended"""

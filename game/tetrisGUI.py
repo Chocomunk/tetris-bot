@@ -1,10 +1,12 @@
 import tkinter as tk
 import numpy as np
 from util.prioritized_experience_replay import PrioritizedExperienceReplay
+from collections import deque
 
 
 class TetrisGUI(object):
-    def __init__(self, tetris_game, block_dim=28, fps=120, time_scalar=1, bind_controls=True, replay_path=None, log_events=False):
+
+    def __init__(self, tetris_game, block_dim=28, fps=10, time_scalar=1, bind_controls=True, replay_path=None, log_events=False):
         """ Initializes a tetris GUI wrapper"""
         self.tetris_game = tetris_game
 
@@ -28,7 +30,7 @@ class TetrisGUI(object):
                 self.buffer = PrioritizedExperienceReplay.from_file(replay_path)
             except FileNotFoundError:
                 self.buffer = PrioritizedExperienceReplay()
-            self.last_state = tetris_game.serve_image()
+            self.state_queue = deque([np.zeros((22, 10)) for _ in range(3)] + [tetris_game.serve_image()], 4)
             self.action = -1
 
         self.bot = None
@@ -63,10 +65,13 @@ class TetrisGUI(object):
         else:
             s1, d = self.bot.update(self.sess)
 
-        if self.log_events and self.action >= 0 and not self.game_over:
+        if self.log_events and s1 is not None and not self.game_over:
+            old_stack = np.stack(self.state_queue, axis=-1)
+            self.state_queue.appendleft(s1)
+            new_stack = np.stack(self.state_queue, axis=-1)
+
             step_reward = (self.tetris_game.points - pre_points)
-            self.buffer.add(np.abs(step_reward), (self.last_state, self.action, step_reward, s1, d))
-            self.last_state = s1
+            self.buffer.add(np.abs(step_reward), (old_stack, self.action, step_reward, new_stack, d))
 
         if d:
             self.game_over = True

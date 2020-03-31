@@ -9,14 +9,13 @@ class DDQNetwork(object):
         self.image_size = image_size
 
         with tf.name_scope(name=name):
-            self.state_image = tf.placeholder(shape=[None, *image_size, 1], dtype=tf.float32)
+            self.state_image = tf.placeholder(shape=[None, *image_size, 4], dtype=tf.float32)
 
             # Feature-detecting convolutions
             with slim.arg_scope([slim.conv2d], padding='SAME'):
                 self.conv_out = slim.stack(self.state_image, slim.conv2d, [
                     # num_outputs, kernel_size, stride
-                    (16,           [2, 2], [1, 1]),
-                    (64,           [2, 2], [1, 1]),
+                    (16,           [4, 4], [1, 1]),
                     (64,           [3, 3], [1, 1]),
                     (conv_out_dim, [3, 3], [1, 1])
                 ])
@@ -25,9 +24,10 @@ class DDQNetwork(object):
 
             # Split advantage and value functions
             self.conv_flatten = slim.flatten(self.conv_out)
+            self.flatt_dense = tf.layers.dense(inputs=self.conv_flatten, units=1024, kernel_initializer=xavier_init)
 
-            self.value_fc = tf.layers.dense(inputs=self.conv_flatten, units=512, kernel_initializer=xavier_init)
-            self.advantage_fc = tf.layers.dense(inputs=self.conv_flatten, units=512, kernel_initializer=xavier_init)
+            self.value_fc = tf.layers.dense(inputs=self.flatt_dense, units=512, kernel_initializer=xavier_init)
+            self.advantage_fc = tf.layers.dense(inputs=self.flatt_dense, units=512, kernel_initializer=xavier_init)
 
             self.value = tf.layers.dense(inputs=self.value_fc, units=1, activation=None,
                                          kernel_initializer=xavier_init)

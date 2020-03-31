@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from collections import deque
 from bot.tetris_environment import TetrisEnvironment
 from bot.DDQNetwork import DDQNetwork
 
@@ -10,8 +11,8 @@ class TetrisBot(object):
         """ Initialize a tetris AI object"""
         self.env = TetrisEnvironment(tetris_instance=tetris_instance)
         self.model_path = model_path
-        self.model = DDQNetwork(512, [22, 10], 4, name=name)
-        self.last_state = self.env.tetris_instance.serve_image()
+        self.model = DDQNetwork(64, [22, 10], 4, name=name)
+        self.state_queue = deque([np.zeros((22, 10)) for _ in range(3)] + [self.env.tetris_instance.serve_image()], 4)
         self.saver = tf.train.Saver()
 
     def init(self, sess):
@@ -27,11 +28,11 @@ class TetrisBot(object):
     def update(self, sess):
         """ Called every drawn frame, lets the bot make decisions"""
         a, qs, con = sess.run([self.model.best_action, self.model.outputQ, self.model.conv_out],
-                         feed_dict={self.model.state_image: [self.last_state]})
+                              feed_dict={self.model.state_image: [np.stack(self.state_queue, axis=-1)]})
         a = a[0]
         print("{}: {}, {}".format(a, qs, np.sum(con)))
         s1, r, d = self.env.step(a)
-        self.last_state = s1
+        self.state_queue.appendleft(s1)
 
         return s1, d
 

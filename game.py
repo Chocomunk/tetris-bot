@@ -23,7 +23,7 @@ if __name__ == '__main__':
         raise ValueError("Trying to play with AI, but no model path is provided!")
 
     t = Tetris()
-    w = TetrisGUI(t, time_scalar=3, bind_controls=True, replay_path=args.replay_path, log_events=args.log_events)
+    w = TetrisGUI(t, time_scalar=2, bind_controls=True, replay_path=args.replay_path, log_events=args.log_events)
     if args.is_bot:
         b = TetrisBot(tetris_instance=t, model_path=args.model_path, name="TetrisNet")
     else:

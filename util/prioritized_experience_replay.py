@@ -1,6 +1,7 @@
 import random
 import os
 import pickle
+import math
 
 from util.sum_tree_buffer import SumTreeBuffer
 
@@ -14,7 +15,7 @@ class PrioritizedExperienceReplay(object):
         self._buffer = SumTreeBuffer(size=buffer_size, dtype=dtype)
 
     def _get_priority(self, error):
-        return (error + self._epsilon) ** self._alpha
+        return math.pow(error + self._epsilon, self._alpha)
 
     def add(self, error, experience):
         priority = self._get_priority(error)
@@ -39,7 +40,6 @@ class PrioritizedExperienceReplay(object):
                         b = a + bucket_width
                         s = random.uniform(a, b)
                         idx, data = self._buffer.get_entry(s)
-                    # noinspection PyTypeChecker
                     yield data + (idx,)
 
         return generator_func

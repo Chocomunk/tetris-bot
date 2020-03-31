@@ -1,11 +1,13 @@
 from game.tetris import Tetris
 
 default_action_mapping = [
-    (-1, 0),  # 0: left
-    (1,  0),  # 1: right
-    (0,  1),  # 2: down
-    'rotate'  # 3: rotate
+    (-1, 0),   # 0: left
+    (1,  0),   # 1: right
+    (0,  1),   # 2: down
+    'rotate',  # 3: rotate
+    (0, 0)     # 4: do nothing
 ]
+
 
 class TetrisEnvironment(object):
 
