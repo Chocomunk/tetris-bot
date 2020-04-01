@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from collections import deque
 from bot.tetris_environment import TetrisEnvironment
-from bot.DDQNetwork import DDQNetwork
+from bot.DQNModel import DDQNetwork
 
 
 class TetrisBot(object):

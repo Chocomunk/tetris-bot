@@ -1,8 +1,8 @@
 import numpy as np
 import tensorflow as tf
 import os
+import bot.DQNModel
 from collections import deque
-from bot.DDQNetwork import DDQNetwork
 from bot.tetris_environment import TetrisEnvironment
 from util.prioritized_experience_replay import PrioritizedExperienceReplay
 from util.circular_array import CircularArray
@@ -31,7 +31,7 @@ default_training_args = {
 }
 
 
-def get_target_update_ops(main_name, target_name, tau=0.001):
+def DELETE_get_target_update_ops(main_name, target_name, tau=0.001):
     from_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, main_name)
     to_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, target_name)
     op_holder = []
@@ -60,8 +60,7 @@ class DQNTrainer(object):
         self.end_epsilon = training_args['end_epsilon']
         self.epsilon_step_drop = float(self.epsilon - self.end_epsilon) / training_args['annealing_steps']
 
-        # self.move_count_list = []
-        # self.reward_list = []
+        # Training logs
         self.total_reward_list = deque()
         self.total_reward = 0
         self.reward_entry_count = 0
