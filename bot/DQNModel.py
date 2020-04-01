@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, Dense
+from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
 
 class Split(tf.keras.layers.Layer):
@@ -23,8 +23,8 @@ class Dueling(tf.keras.layers.Layer):
 
 class DQNet(tf.keras.Model):
 
-    def __init__(self, num_actions, conv_out_dim):
-        super(DQNet, self).__init__()
+    def __init__(self, num_actions, conv_out_dim, *args, **kwargs):
+        super(DQNet, self).__init__(args, kwargs)
         with tf.name_scope(name=self.name):
             # Feature-detecting convolutions
             self.conv1 = Conv2D(64, [4, 4])
@@ -32,6 +32,8 @@ class DQNet(tf.keras.Model):
 
             # Split advantage and value functions
             self.split = Split(2, axis=3)
+            self.value_flatten = Flatten()
+            self.advantage_flatten = Flatten()
             self.value = Dense(1, name="value")
             self.advantage = Dense(num_actions, name="advantage")
 
@@ -42,6 +44,8 @@ class DQNet(tf.keras.Model):
         x = self.conv1(inputs)
         x = self.conv2(x)
         v, a = self.split(x)
+        v = self.value_flatten(v)
+        a = self.advantage_flatten(a)
         v = self.value(v)
         a = self.advantage(a)
         return self.q(v, a)
