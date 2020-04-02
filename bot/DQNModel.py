@@ -5,8 +5,8 @@ from tensorflow.keras.models import Model
 
 class Split(tf.keras.layers.Layer):
 
-    def __init__(self, num_or_size_splits, axis=0, num=None, name='split'):
-        super(Split, self).__init__()
+    def __init__(self, num_or_size_splits, axis=0, num=None, name='split', *args, **kwargs):
+        super(Split, self).__init__(trainable=False, *args, **kwargs)
         self._num_split = num_or_size_splits
         self._axis = axis
         self._num = num
@@ -18,14 +18,21 @@ class Split(tf.keras.layers.Layer):
 
 class Dueling(tf.keras.layers.Layer):
 
+    def __init__(self, *args, **kwargs):
+        super(Dueling, self).__init__(trainable=False, *args, **kwargs)
+
     def call(self, value, advantage):
         return value + tf.subtract(advantage, tf.reduce_mean(advantage, axis=1, keepdims=True))
 
 
 class QPrediction(tf.keras.layers.Layer):
 
-    def call(self, actions, q_values, num_actions):
-        actions_onehot = tf.one_hot(actions, num_actions, dtype=tf.float32)
+    def __init__(self, num_actions, *args, **kwargs):
+        super(QPrediction, self).__init__(trainable=False, *args, **kwargs)
+        self.num_actions = num_actions
+
+    def call(self, actions, q_values):
+        actions_onehot = tf.one_hot(actions, self.num_actions, dtype=tf.float32)
         return tf.reduce_sum(tf.multiply(q_values, actions_onehot), axis=1)
 
 
@@ -47,7 +54,7 @@ class DQNet(tf.keras.Model):
         self.advantage = Dense(num_actions, trainable=trainable, name="advantage")
 
         # Output: full q output
-        self.q = Dueling(name="q_value")
+        self.q = Dueling(name="q_output")
 
     def call(self, inputs, training=False, **kwargs):
         x = self.conv1(inputs)
@@ -67,8 +74,8 @@ class DQNet(tf.keras.Model):
             return (q_values > 0.5).astype('int32')
 
     def trainable_model(self, image_shape):
-        image = Input(shape=image_shape)
-        action = Input(shape=(self.num_actions,))
+        image = Input(shape=image_shape, name="input_image")
+        action = Input(shape=[], dtype=tf.int32, name="action")
         qs = self.call(image, training=True)
-        q_pred = QPrediction(action, qs, self.num_actions)
+        q_pred = QPrediction(num_actions=self.num_actions, name="q_value")(action, qs)
         return Model(inputs=[image, action], outputs=q_pred)

@@ -19,7 +19,7 @@ default_training_args = {
     'start_epsilon': 1,
     'end_epsilon': .2,
     'annealing_steps': 10000,
-    'pre_train_steps': 500,
+    'pre_train_steps': 33,
     'max_episode_length': -1,
     'conv_out_dim': 64,
     'tau': .01,
@@ -98,11 +98,10 @@ class DQNTrainer(object):
                 print("No saved model found, skipping load")
 
     def generate_samples(self, batch, batch_size):
-        return (batch[0], batch[1]), self.target_q(batch, batch_size=batch_size)
+        return [batch[0], batch[1]], self.target_q(batch, batch_size=batch_size)
 
     def train_target(self, tau=None):
-        if tau is None:
-            tau = self.tau
+        tau = tau or self.tau
         main_weights = self.mainDQN.get_weights()
         targ_weights = self.targetDQN.get_weights()
         new_weights = []
@@ -131,10 +130,9 @@ class DQNTrainer(object):
             return self.mainDQN.predict_action(inputs)
 
     def add_experience(self, old_state, new_state, action, reward, done):
-        fake_batch = self.generate_samples((old_state[np.newaxis, :, :, :], [action], reward,
+        fake_batch = self.generate_samples((old_state[np.newaxis, :, :, :], np.array([action]), reward,
                                             new_state[np.newaxis, :, :, :], done, None), batch_size=1)
-        print(np.array(fake_batch[1]).shape)
-        error = self.mainDQN.evaluate(fake_batch[0], fake_batch[1])
+        error = self.trainDQN.evaluate(fake_batch[0], fake_batch[1], verbose=0)
 
         self.experience_buffer.add(error, (old_state, action, reward, new_state, done))
 
@@ -165,7 +163,7 @@ class DQNTrainer(object):
             # Training
             if self.total_steps > self.pre_train_steps:
                 if self.total_steps % self.update_freq == 0:    # Train main model
-                    batch = self.experience_dataset.take(1)
+                    batch = next(iter(self.experience_dataset.take(1)))
                     indices = batch[5]
                     samples = self.generate_samples(batch, batch_size=self.batch_size)
                     hist = self.trainDQN.fit(samples[0], samples[1], batch_size=self.batch_size, epochs=1, verbose=1,
