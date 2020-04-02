@@ -23,20 +23,20 @@ class Dueling(tf.keras.layers.Layer):
 
 class DQNet(tf.keras.Model):
 
-    def __init__(self, num_actions, conv_out_dim, *args, **kwargs):
+    def __init__(self, num_actions, conv_out_dim, trainable=True, *args, **kwargs):
         super(DQNet, self).__init__(args, kwargs)
         self.num_actions = num_actions
         with tf.name_scope(name=self.name):
             # Feature-detecting convolutions
-            self.conv1 = Conv2D(64, [4, 4])
-            self.conv2 = Conv2D(conv_out_dim, [3, 3])
+            self.conv1 = Conv2D(64, [4, 4], trainable=trainable)
+            self.conv2 = Conv2D(conv_out_dim, [3, 3], trainable=trainable)
 
             # Split advantage and value functions
             self.split = Split(2, axis=3)
             self.value_flatten = Flatten()
             self.advantage_flatten = Flatten()
-            self.value = Dense(1, name="value")
-            self.advantage = Dense(num_actions, name="advantage")
+            self.value = Dense(1, trainable=trainable, name="value")
+            self.advantage = Dense(num_actions, trainable=trainable, name="advantage")
 
             # Output: full q output
             self.q = Dueling(name="q_value")

@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import os
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.models import load_model
 
 from bot.DQNModel import DQNet
 from collections import deque
@@ -33,18 +34,9 @@ default_training_args = {
 }
 
 
-def DELETE_get_target_update_ops(main_name, target_name, tau=0.001):
-    from_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, main_name)
-    to_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, target_name)
-    op_holder = []
-    for from_var, to_var in zip(from_vars, to_vars):
-        op_holder.append(to_var.assign((from_var.value()*tau) + ((1-tau)*to_var.value())))
-    return op_holder
-
-
 class DQNTrainer(object):
 
-    def __init__(self, image_size, num_actions, model_path, main_model_name, target_model_name,
+    def __init__(self, num_actions, model_path, main_model_name, target_model_name,
                  env=None, buffer=None, training_args=None):
         if training_args is None:
             training_args = default_training_args
@@ -61,6 +53,7 @@ class DQNTrainer(object):
         self.epsilon = training_args['start_epsilon']
         self.end_epsilon = training_args['end_epsilon']
         self.epsilon_step_drop = float(self.epsilon - self.end_epsilon) / training_args['annealing_steps']
+        self.tau = training_args['tau']
 
         # Training logs
         self.total_reward_list = deque()
@@ -79,34 +72,37 @@ class DQNTrainer(object):
             output_types=training_args['output_types'],
             output_shapes=training_args['output_shapes']
         ).batch(batch_size=self.batch_size)
-        self.batched_iter = self.experience_dataset.make_initializable_iterator()
-        self.next_batch = self.batched_iter.get_next()
 
         # DQN definitions: using a second target network and the Double Q approach
         opt = Adam()
         self.mainDQN = DQNet(num_actions, training_args['conv_out_dim'], name=main_model_name)
-        self.targetDQN = DQNet(num_actions, training_args['conv_out_dim'], name=target_model_name)
+        self.targetDQN = DQNet(num_actions, training_args['conv_out_dim'], name=target_model_name, trainable=False)
         self.mainDQN.compile(loss=self.mainDQN.loss, optimizer=opt)
-        self.targetDQN.compile(loss=self.targetDQN.loss, optimizer=opt)
+        # self.targetDQN.compile(loss=self.targetDQN.loss, optimizer=opt)
 
-    def init(self, load_model):
+    def init(self, load_from_file):
         self.epsilon = self.training_args['start_epsilon']      # Reset epsilon
         self.total_reward_list.clear()
         self.total_steps = 0
 
-        if not os.path.exists(path=self.model_path):
-            os.makedirs(self.model_path)
-
-        if load_model:
-            print("Loading Saved Model")
-            checkpt = tf.train.get_checkpoint_state(self.model_path)
-            if checkpt is None:
+        if load_from_file:
+            if os.path.exists(path=self.model_path + "/model"):
+                print("Loading Saved Model")
+                self.mainDQN = load_model(self.model_path+"/model")
+            else:
                 print("No saved model found, skipping load")
-                return
-            self.saver.restore(sess, checkpt.model_checkpoint_path)
 
     def generate_samples(self, batch):
         return batch[0], (self.target_q(batch, batch_size=self.batch_size), batch[1])
+
+    def train_target(self, tau=None):
+        if tau is None: tau = self.tau
+        main_weights = self.mainDQN.get_weights()
+        targ_weights = self.targetDQN.get_weights()
+        new_weights = []
+        for i in range(len(main_weights)):
+            new_weights.append(targ_weights[i] * (1 - tau) + main_weights[i] * tau)
+        self.targetDQN.set_weights(new_weights)
 
     def target_q(self, batch, batch_size):
         _, _, b_r, b_s1, b_d, _ = batch
@@ -130,10 +126,7 @@ class DQNTrainer(object):
 
     def add_experience(self, old_state, new_state, action, reward, done):
         fake_batch = ([old_state], None, reward, [new_state], done, None)
-        targetq = self.target_q(fake_batch, 1)
-        error = sess.run(self.abs_error, feed_dict={self.mainDQN.state_image: [old_state],
-                                                    self.targetQ: targetq,
-                                                    self.actions: [action]})
+        error = self.mainDQN.evaluate((self.target_q(fake_batch, 1), [action]), [old_state])
 
         self.experience_buffer.add(error, (old_state, action, reward, new_state, done))
 
@@ -161,21 +154,18 @@ class DQNTrainer(object):
             r_total += r
             self.total_reward += r
 
+            # Training
             if self.total_steps > self.pre_train_steps:
-                # if self.total_steps % self.update_freq == 0:
-                if True:
-                    batch = sess.run(self.next_batch)
+                if self.total_steps % self.update_freq == 0:    # Train main model
+                    batch = self.experience_dataset.take(1)
                     indices = batch[5]
-                    target_qs = self._get_target_q(sess, batch, self.batch_size)
-                    td_error, _, ac_1 = sess.run((self.abs_error, self.train_step, self.actions_onehot),
-                                           feed_dict={self.mainDQN.state_image: batch[0],
-                                                      self.targetQ: target_qs,
-                                                      self.actions: batch[1]})
-                    for op in self.update_target_model_ops:
-                        sess.run(op)
+                    samples = self.generate_samples(batch)
+                    hist = self.mainDQN.fit(samples[0], samples[1])
+
+                    # Update target network and experience buffer
+                    self.train_target()
                     for i in range(self.batch_size):
-                        self.experience_buffer.update_errors(indices[i], td_error[i])
-                        # self.experience_buffer.update_errors(batch[5][i], td_error[i])
+                        self.experience_buffer.update_errors(indices[i], hist['loss'][0])
 
         if self.reward_entry_count >= 10:
             self.total_reward_list.append(self.total_reward / 10.)
@@ -185,7 +175,7 @@ class DQNTrainer(object):
 
         self.recent_reward_list.add(r_total)
 
-    def save_model(self, sess, label):
-        self.saver.save(sess, self.model_path+'/model-'+str(label)+'.ckpt')
+    def save_model(self):
+        self.mainDQN.save("{0}/model".format(self.model_path))
         print("Saved Model")
 
