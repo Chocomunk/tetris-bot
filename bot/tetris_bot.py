@@ -1,8 +1,11 @@
+import os
 import numpy as np
 import tensorflow as tf
 from collections import deque
+from tensorflow_core.python.keras.models import load_model
+
 from bot.tetris_environment import TetrisEnvironment
-from bot.DQNModel import DDQNetwork
+from bot.DQNModel import DQNet
 
 
 class TetrisBot(object):
@@ -11,26 +14,22 @@ class TetrisBot(object):
         """ Initialize a tetris AI object"""
         self.env = TetrisEnvironment(tetris_instance=tetris_instance)
         self.model_path = model_path
-        self.model = DDQNetwork(64, [22, 10], 4, name=name)
+        self.model = DQNet(4, 64, name=name)
         self.state_queue = deque([np.zeros((22, 10)) for _ in range(3)] + [self.env.tetris_instance.serve_image()], 4)
-        self.saver = tf.train.Saver()
 
-    def init(self, sess):
+    def init(self):
         print("Loading Saved Model")
-        checkpt = tf.train.get_checkpoint_state(self.model_path)
-        if checkpt is None:
+        if os.path.exists(path=self.model_path + "/model"):
+            print("Loading Saved Model")
+            self.model = load_model(self.model_path+"/model")
+        else:
             print("Error: no saved checkpoint")
             return
-        print("Found model at {}".format(checkpt))
-        self.saver.restore(sess, checkpt.model_checkpoint_path)
         print("Model loaded")
 
-    def update(self, sess):
+    def update(self):
         """ Called every drawn frame, lets the bot make decisions"""
-        a, qs, con = sess.run([self.model.best_action, self.model.outputQ, self.model.conv_out],
-                              feed_dict={self.model.state_image: [np.stack(self.state_queue, axis=-1)]})
-        a = a[0]
-        print("{}: {}, {}".format(a, qs, np.sum(con)))
+        a = self.model.predict_action([np.stack(self.state_queue, axis=-1)])[0]
         s1, r, d = self.env.step(a)
         self.state_queue.appendleft(s1)
 

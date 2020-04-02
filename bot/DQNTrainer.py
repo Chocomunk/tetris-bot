@@ -3,6 +3,7 @@ import tensorflow as tf
 import os
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import load_model
+from tensorflow.keras.callbacks import ModelCheckpoint
 
 from bot.DQNModel import DQNet
 from collections import deque
@@ -79,6 +80,10 @@ class DQNTrainer(object):
         self.targetDQN = DQNet(num_actions, training_args['conv_out_dim'], name=target_model_name, trainable=False)
         self.mainDQN.compile(loss=self.mainDQN.loss, optimizer=opt)
         # self.targetDQN.compile(loss=self.targetDQN.loss, optimizer=opt)
+
+        checkpoint = ModelCheckpoint("{0}/checkpoints/chkpt-{epoch:02d}-{val_accuracy:.2f}.hdf5", monitor='loss',
+                                     save_best_only=True, mode='max', verbose=1)
+        self.training_callbacks = [checkpoint]
 
     def init(self, load_from_file):
         self.epsilon = self.training_args['start_epsilon']      # Reset epsilon
@@ -160,7 +165,8 @@ class DQNTrainer(object):
                     batch = self.experience_dataset.take(1)
                     indices = batch[5]
                     samples = self.generate_samples(batch)
-                    hist = self.mainDQN.fit(samples[0], samples[1])
+                    hist = self.mainDQN.fit(samples[0], samples[1], batch_size=self.batch_size, epochs=1, verbose=1,
+                                            callbacks=self.training_callbacks)
 
                     # Update target network and experience buffer
                     self.train_target()
