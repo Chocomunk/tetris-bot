@@ -76,10 +76,10 @@ class DQNTrainer(object):
 
         # DQN definitions: using a second target network and the Double Q approach
         opt = Adam()
-        self.mainDQN = DQNet(num_actions, training_args['conv_out_dim'], name=main_model_name)
+        self.mainDQN = DQNet(num_actions, training_args['conv_out_dim'], name=main_model_name, trainable=True)
         self.targetDQN = DQNet(num_actions, training_args['conv_out_dim'], name=target_model_name, trainable=False)
-        self.mainDQN.compile(loss=self.mainDQN.loss, optimizer=opt)
-        # self.targetDQN.compile(loss=self.targetDQN.loss, optimizer=opt)
+        self.trainDQN = self.mainDQN.trainable_model(training_args['output_shapes'][0])
+        self.trainDQN.compile(loss='mean_squared_error', optimizer=opt)
 
         checkpoint = ModelCheckpoint("{0}/checkpoints/chkpt-{epoch:02d}-{val_accuracy:.2f}.hdf5", monitor='loss',
                                      save_best_only=True, mode='max', verbose=1)
@@ -97,11 +97,12 @@ class DQNTrainer(object):
             else:
                 print("No saved model found, skipping load")
 
-    def generate_samples(self, batch):
-        return batch[0], (self.target_q(batch, batch_size=self.batch_size), batch[1])
+    def generate_samples(self, batch, batch_size):
+        return (batch[0], batch[1]), self.target_q(batch, batch_size=batch_size)
 
     def train_target(self, tau=None):
-        if tau is None: tau = self.tau
+        if tau is None:
+            tau = self.tau
         main_weights = self.mainDQN.get_weights()
         targ_weights = self.targetDQN.get_weights()
         new_weights = []
@@ -130,8 +131,10 @@ class DQNTrainer(object):
             return self.mainDQN.predict_action(inputs)
 
     def add_experience(self, old_state, new_state, action, reward, done):
-        fake_batch = ([old_state], None, reward, [new_state], done, None)
-        error = self.mainDQN.evaluate((self.target_q(fake_batch, 1), [action]), [old_state])
+        fake_batch = self.generate_samples((old_state[np.newaxis, :, :, :], [action], reward,
+                                            new_state[np.newaxis, :, :, :], done, None), batch_size=1)
+        print(np.array(fake_batch[1]).shape)
+        error = self.mainDQN.evaluate(fake_batch[0], fake_batch[1])
 
         self.experience_buffer.add(error, (old_state, action, reward, new_state, done))
 
@@ -164,9 +167,9 @@ class DQNTrainer(object):
                 if self.total_steps % self.update_freq == 0:    # Train main model
                     batch = self.experience_dataset.take(1)
                     indices = batch[5]
-                    samples = self.generate_samples(batch)
-                    hist = self.mainDQN.fit(samples[0], samples[1], batch_size=self.batch_size, epochs=1, verbose=1,
-                                            callbacks=self.training_callbacks)
+                    samples = self.generate_samples(batch, batch_size=self.batch_size)
+                    hist = self.trainDQN.fit(samples[0], samples[1], batch_size=self.batch_size, epochs=1, verbose=1,
+                                             callbacks=self.training_callbacks)
 
                     # Update target network and experience buffer
                     self.train_target()

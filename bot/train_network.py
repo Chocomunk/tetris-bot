@@ -9,7 +9,8 @@ NUM_EPISODES = 1
 
 if __name__ == '__main__':
     env = TetrisEnvironment(time_limit=120000)
-    buffer = PrioritizedExperienceReplay.from_file('./logs/replay')
+    # buffer = PrioritizedExperienceReplay.from_file('./logs/replay')
+    buffer = PrioritizedExperienceReplay()
     # buffer = ExperienceReplayBuffer()
     trainer = DQNTrainer(4, "./bot/ddqn", "TetrisNet", "TetrisTargetDQN", buffer=buffer)
 
@@ -24,4 +25,4 @@ if __name__ == '__main__':
         # rMean = np.average(rMat, 1)
         # plt.plot(rMean)
         plt.plot(rMat)
-        plt.show()
+        # plt.show()
