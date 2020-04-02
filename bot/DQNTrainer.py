@@ -1,6 +1,8 @@
 import numpy as np
 import tensorflow as tf
 import os
+from tensorflow.keras.optimizers import Adam
+
 from bot.DQNModel import DQNet
 from collections import deque
 from bot.tetris_environment import TetrisEnvironment
@@ -81,31 +83,11 @@ class DQNTrainer(object):
         self.next_batch = self.batched_iter.get_next()
 
         # DQN definitions: using a second target network and the Double Q approach
+        opt = Adam()
         self.mainDQN = DQNet(num_actions, training_args['conv_out_dim'], name=main_model_name)
         self.targetDQN = DQNet(num_actions, training_args['conv_out_dim'], name=target_model_name)
-
-        # # Slowly update target network to the main network
-        # self.update_target_model_ops = get_target_update_ops(main_model_name, target_model_name, training_args['tau'])
-        #
-        # self.saver = tf.train.Saver()
-        #
-        # # Training functions
-        # self.targetQ = tf.placeholder(shape=[None], dtype=tf.float32)
-        # self.actions = tf.placeholder(shape=[None], dtype=tf.int32)
-        #
-        # self.actions_onehot = tf.one_hot(self.actions, num_actions, dtype=tf.float32)
-        # self.modelQ = tf.reduce_sum(tf.multiply(self.mainDQN.outputQ, self.actions_onehot), axis=1)
-        #
-        # self.conv_total = tf.reduce_sum(self.mainDQN.conv_out)
-        #
-        # # Loss ops
-        # self.td_error = self.targetQ - self.modelQ  # Kept in separate variable for training evaluation
-        # self.abs_error = tf.abs(self.td_error)
-        # self.cost = tf.reduce_mean(tf.square(self.td_error))
-        #
-        # # Training/Optimization
-        # self.trainer = tf.train.AdamOptimizer(learning_rate=0.001)
-        # self.train_step = self.trainer.minimize(self.cost)
+        self.mainDQN.compile(loss=self.mainDQN.loss, optimizer=opt)
+        self.targetDQN.compile(loss=self.targetDQN.loss, optimizer=opt)
 
     def init(self, load_model):
         self.epsilon = self.training_args['start_epsilon']      # Reset epsilon
@@ -124,7 +106,7 @@ class DQNTrainer(object):
             self.saver.restore(sess, checkpt.model_checkpoint_path)
 
     def generate_samples(self, batch):
-        return batch[0], self.target_q(batch, batch_size=self.batch_size)
+        return batch[0], (self.target_q(batch, batch_size=self.batch_size), batch[1])
 
     def target_q(self, batch, batch_size):
         _, _, b_r, b_s1, b_d, _ = batch

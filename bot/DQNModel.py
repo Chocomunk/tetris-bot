@@ -25,6 +25,7 @@ class DQNet(tf.keras.Model):
 
     def __init__(self, num_actions, conv_out_dim, *args, **kwargs):
         super(DQNet, self).__init__(args, kwargs)
+        self.num_actions = num_actions
         with tf.name_scope(name=self.name):
             # Feature-detecting convolutions
             self.conv1 = Conv2D(64, [4, 4])
@@ -56,3 +57,9 @@ class DQNet(tf.keras.Model):
             return q_values.argmax(axis=-1)
         else:
             return (q_values > 0.5).astype('int32')
+
+    def loss(self, y_true, y_pred):
+        q_target, actions = y_true
+        actions_onehot = tf.one_hot(actions, self.num_actions, dtype=tf.float32)
+        model_q = tf.reduce_sum(tf.multiply(y_pred, actions_onehot), axis=1)
+        return tf.reduce_mean(tf.square(q_target - model_q))
