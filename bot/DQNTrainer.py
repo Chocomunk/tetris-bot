@@ -136,6 +136,19 @@ class DQNTrainer(object):
 
         self.experience_buffer.add(error, (old_state, action, reward, new_state, done))
 
+    def simulate_step(self, state):
+        # Select action and send it to the game
+        old_stack = np.stack(state, axis=-1)
+        action = self.select_action(old_stack)
+        next_state, reward, done = self.env.step(action)
+        state.appendleft(next_state)
+        new_stack = np.stack(state, axis=-1)
+
+        # Remember experience
+        self.add_experience(old_stack, new_stack, action, reward, done)
+
+        return reward
+
     def step_episode(self):
         # Reset environment and initialize state_queue
         state_queue = deque([np.zeros((22, 10)) for _ in range(3)] + [self.env.reset()], 4)
@@ -147,16 +160,8 @@ class DQNTrainer(object):
             iteration += 1
             self.total_steps += 1
 
-            # Select action and send it to the game
-            old_stack = np.stack(state_queue, axis=-1)
-            action = self.select_action(old_stack)
-            s1, r, done = self.env.step(action)
-            state_queue.appendleft(s1)
-            new_stack = np.stack(state_queue, axis=-1)
-
-            # Remember experience
-            self.add_experience(old_stack, new_stack, action, r, done)
-
+            # Play the the game for one action and remember the result
+            r = self.simulate_step(state_queue)
             r_total += r
             self.total_reward += r
 
@@ -166,14 +171,16 @@ class DQNTrainer(object):
                     batch = next(iter(self.experience_dataset.take(1)))
                     indices = batch[5]
                     samples = self.generate_samples(batch, batch_size=self.batch_size)
-                    hist = self.trainDQN.fit(samples[0], samples[1], batch_size=self.batch_size, epochs=1, verbose=1,
-                                             callbacks=self.training_callbacks)
+                    hist = self.trainDQN.fit(samples[0], samples[1], batch_size=self.batch_size, epochs=1, verbose=0)
+                                            # TODO: Causing index out of bound error?
+                                             # callbacks=self.training_callbacks)
 
                     # Update target network and experience buffer
                     self.train_target()
                     for i in range(self.batch_size):
-                        self.experience_buffer.update_errors(indices[i], hist['loss'][0])
+                        self.experience_buffer.update_errors(indices[i], hist.history['loss'][0])
 
+        # Average total reward over 10 steps
         if self.reward_entry_count >= 10:
             self.total_reward_list.append(self.total_reward / 10.)
             self.reward_entry_count = 0
@@ -183,6 +190,8 @@ class DQNTrainer(object):
         self.recent_reward_list.add(r_total)
 
     def save_model(self):
+        if not os.path.exists(path=self.model_path + "/model"):
+            os.mkdir(self.model_path + "/model")
         self.mainDQN.save("{0}/model".format(self.model_path))
         print("Saved Model")
 
