@@ -9,6 +9,7 @@ __pycache__/
 # Bot files and logs
 bot/*/
 logs/
+plots/
 
 # Distribution / packaging
 .Python
