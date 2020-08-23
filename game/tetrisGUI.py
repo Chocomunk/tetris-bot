@@ -34,7 +34,6 @@ class TetrisGUI(object):
             self.action = -1
 
         self.bot = None
-        self.sess = None
 
         if bind_controls:
             self.bind_canvas(tetris_game)
@@ -43,15 +42,10 @@ class TetrisGUI(object):
 
         self.game_over = False
 
-    def start(self, bot=None, sess=None):
+    def start(self, bot=None):
         if bot is not None:
-            if sess is None:
-                print("Error starting Tetris GUI: bot with no sess specified")
-                return
-            else:
-                self.bot = bot
-                self.bot.env.dt = self.dt
-                self.sess = sess
+            self.bot = bot
+            self.bot.env.dt = self.dt
         self.update()
         self.root.mainloop()
 
@@ -63,7 +57,7 @@ class TetrisGUI(object):
         if self.bot is None:
             s1, d = self.tetris_game.update(self.dt)
         else:
-            s1, d = self.bot.update(self.sess)
+            s1, d = self.bot.update()
 
         if self.log_events and s1 is not None and not self.game_over:
             old_stack = np.stack(self.state_queue, axis=-1)

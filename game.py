@@ -32,8 +32,5 @@ if __name__ == '__main__':
     if not args.is_bot:
         w.start()
     else:
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        with tf.Session(config=config) as sess:
-            b.init(sess)
-            w.start(b, sess)
+        b.init()
+        w.start(b)

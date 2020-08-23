@@ -3,20 +3,20 @@ import numpy as np
 
 class SumTreeBuffer(object):
 
-    def __init__(self, size=100000, dtype=object):
-        self._data = np.zeros(size, dtype=dtype)
+    def __init__(self, size, dtype=object):
+        self._data = np.empty(size, dtype=dtype)
         self._size = self._data.size
         self._tree_size = 2 * self._size - 1
         self._tree = np.zeros(self._tree_size, dtype=np.float32)
         self._data_idx = 0
         self.full = False
 
-    def _propogate(self, idx, difference):
+    def _propagate(self, idx, difference):
         parent_idx = (idx - 1) // 2
         self._tree[parent_idx] += difference
 
         if parent_idx > 0:
-            self._propogate(parent_idx, difference)
+            self._propagate(parent_idx, difference)
 
     def _get_idx(self, idx, value):
         left = 2 * idx + 1
@@ -34,7 +34,7 @@ class SumTreeBuffer(object):
     def update(self, idx, value):
         difference = value - self._tree[idx]
         self._tree[idx] = value
-        self._propogate(idx, difference)
+        self._propagate(idx, difference)
 
     def total(self):
         return self._tree[0]

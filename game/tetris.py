@@ -104,7 +104,7 @@ class Tetris(object):
         self.height = 22
 
         # Bord elements are 0 for empty and 1 for filled
-        self.board = np.zeros((self.height, self.width), dtype=np.int8)
+        self.board = np.zeros((self.height, self.width), dtype=np.float32)
         self.colors = np.zeros((self.height, self.width), dtype=np.dtype("a7"))     # dtype: 7 character string
         self.piece_list = []
 

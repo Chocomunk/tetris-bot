@@ -2,6 +2,7 @@ import random
 import os
 import pickle
 import math
+import numpy as np
 
 from util.sum_tree_buffer import SumTreeBuffer
 
@@ -30,6 +31,14 @@ class PrioritizedExperienceReplay(object):
 
     def get_sample_generator(self, batch_size):
         def generator_func():
+
+            old_state = np.zeros((batch_size, 22, 10, 4), dtype=np.float32)
+            actions = np.zeros(batch_size, dtype=np.int32)
+            reward = np.zeros(batch_size, dtype=np.float32)
+            new_state = np.zeros((batch_size, 22, 10, 4), dtype=np.float32)
+            done = np.zeros(batch_size, dtype=np.int32)
+            indices = np.zeros(batch_size, dtype=np.int32)
+
             while True:
                 bucket_width = self._buffer.total() / batch_size
 
@@ -40,7 +49,13 @@ class PrioritizedExperienceReplay(object):
                         b = a + bucket_width
                         s = random.uniform(a, b)
                         idx, data = self._buffer.get_entry(s)
-                    yield data + (idx,)
+                    old_state[i] = data[0]
+                    actions[i] = data[1]
+                    reward[i] = data[2]
+                    new_state[i] = data[3]
+                    done[i] = data[4]
+                    indices[i] = idx
+                yield old_state, actions, reward, new_state, done, indices
 
         return generator_func
 
