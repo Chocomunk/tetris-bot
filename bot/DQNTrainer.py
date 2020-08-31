@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import os
 import time
+import datetime
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.losses import MeanSquaredError
 from tensorflow.keras.models import load_model
@@ -80,19 +81,21 @@ class DQNTrainer(object):
         self.trainDQN = self.mainDQN.trainable_model(training_args['output_shapes'][0])
         self.trainDQN.compile(loss=self.loss, optimizer=self.opt)
 
-        checkpoint = ModelCheckpoint("checkpoints/chkpt-{epoch:02d}-{val_accuracy:.2f}.hdf5", monitor='loss',
-                                     save_best_only=True, mode='max', verbose=1)
-        self.training_callbacks = [checkpoint]
+        logdir = "logs/dqn/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        file_writer = tf.summary.create_file_writer(logdir + "/metrics")
+        file_writer.set_as_default()
+        tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir, profile_batch=5)
+        checkpoint = ModelCheckpoint("checkpoints/", monitor='val_acc', save_freq='epoch',
+                                     save_best_only=True, mode='max', verbose=0, save_weights_only=True)
+        # self.training_callbacks = [checkpoint]
+        self.training_callbacks = []
 
         self.state_input = tf.keras.layers.InputLayer(input_shape=training_args['output_shapes'][0])
         self.q_input = tf.keras.layers.InputLayer(input_shape=[])
 
         self.sim_play = 0
         self.sim_remember = 0
-        self.targ_pred_main = 0
-        self.targ_pred_dual = 0
-        self.targ_comp_rw = 0
-        self.targ_comp_qs = 0
+        self.exp_samp = 0
         self.exp_batch = 0
         self.exp_error = 0
         self.exp_add = 0
@@ -109,8 +112,8 @@ class DQNTrainer(object):
             else:
                 print("No saved model found, skipping load")
 
-    def generate_samples(self, batch, batch_size):
-        return [batch[0], batch[1]], self.target_q(batch, batch_size=batch_size)
+    def generate_samples(self, batch):
+        return [batch[0], batch[1]], self.target_q(batch[3], batch[2], batch[4])
 
     def train_target(self, tau=None):
         tau = tau or self.tau
@@ -121,31 +124,17 @@ class DQNTrainer(object):
             new_weights.append(targ_weights[i] * (1 - tau) + main_weights[i] * tau)
         self.targetDQN.set_weights(new_weights)
 
-    def target_q(self, batch, batch_size):
-        _, _, b_r, b_s1, b_d, _ = batch
+    @tf.function
+    def target_q(self, next_state, reward, done):
+        best_actions = self.mainDQN.predict_action(next_state)
+        target_qs = self.targetDQN(next_state, training=False)
 
-        start = time.time()
+        row_indices = tf.range(tf.shape(next_state)[0])
+        full_indices = tf.stack([row_indices, best_actions], axis=1)
+        double_q = tf.gather_nd(target_qs, full_indices)
+        end_multiplier = tf.cast(1 - done, dtype=tf.float32)
 
-        # best_actions = self.mainDQN.predict_action(b_s1, batch_size=batch_size)
-        double_q = self.targetDQN.double_q(b_s1, self.mainDQN, batch_size)
-
-        mid1 = time.time()
-        # target_qs = self.targetDQN.predict(b_s1, batch_size=batch_size)
-        # target_qs = self.targetDQN(b_s1, training=False).numpy()
-
-        mid2 = time.time()
-
-        end_multiplier = 1. - b_d
-        # double_q = target_qs[range(batch_size), best_actions]
-        mid3 = time.time()
-        target_q = b_r + (self.gamma * double_q * end_multiplier)
-
-        self.targ_comp_rw += time.time() - mid3
-        self.targ_comp_qs += mid3 - mid2
-        self.targ_pred_dual += mid2 - mid1
-        self.targ_pred_main += mid1 - start
-
-        return target_q
+        return reward + (self.gamma * double_q * end_multiplier)
 
     def select_action(self, inputs):
         if np.random.rand(1) < self.epsilon or self.total_steps < self.pre_train_steps:
@@ -157,6 +146,7 @@ class DQNTrainer(object):
 
     @tf.function
     def experience_error(self, state, true):
+        # print("Experience Error Tracing with:", state, true)
         s_inp = self.state_input(state)
         q_inp = self.q_input(true)
         pred = self.trainDQN(s_inp, training=False)
@@ -164,17 +154,19 @@ class DQNTrainer(object):
 
     def add_experience(self, old_state, new_state, action, reward, done):
         start = time.time()
-        fake_batch = self.generate_samples((old_state[np.newaxis, :, :, :], np.array([action]), reward,
-                                            new_state[np.newaxis, :, :, :], done, None), batch_size=1)
+        samp = (np.expand_dims(old_state, axis=0), np.array([action]), reward, np.expand_dims(new_state, axis=0), done, None)
         mid1 = time.time()
-        error = self.experience_error(fake_batch[0], fake_batch[1])
+        fake_batch = self.generate_samples(samp)
         mid2 = time.time()
+        error = self.experience_error(fake_batch[0], fake_batch[1])
+        mid3 = time.time()
 
         self.experience_buffer.add(error, (old_state, action, reward, new_state, done))
 
-        self.exp_add += time.time() - mid2
-        self.exp_error += mid2 - mid1
-        self.exp_batch += mid1 - start
+        self.exp_add += time.time() - mid3
+        self.exp_error += mid3 - mid2
+        self.exp_batch += mid2 - mid1
+        self.exp_samp += mid1 - start
 
     def simulate_step(self, state):
         # Select action and send it to the game
@@ -196,9 +188,10 @@ class DQNTrainer(object):
 
         return reward
 
-    def step_episode(self):
+    def step_episode(self, episode):
         # Reset environment and initialize state_queue
         start_time = time.time()
+        last_time = time.time()
         state_queue = deque([np.zeros((22, 10)) for _ in range(3)] + [self.env.reset()], 4)
         done = False
         r_total = 0
@@ -209,6 +202,7 @@ class DQNTrainer(object):
         sim_time = 0
         data_time = 0
         buff_time = 0
+        sum_time = 0
 
         data_batch = 0
         data_samples = 0
@@ -232,45 +226,46 @@ class DQNTrainer(object):
                     batch = next(self.experience_generator())
                     d_mid = time.time()
                     indices = batch[5]
-                    samples = self.generate_samples(batch, batch_size=self.batch_size)
+                    samples = self.generate_samples(batch)
                     data_samples += time.time() - d_mid
                     data_batch += d_mid - d_start
                     data_time += time.time() - d_start
                     t_start = time.time()
-                    hist = self.trainDQN.fit(samples[0], samples[1], batch_size=self.batch_size, epochs=1, verbose=0)
-                                            # TODO: Causing index out of bound error?
-                                             # callbacks=self.training_callbacks)
+                    hist = self.trainDQN.fit(samples[0], samples[1], epochs=1, verbose=0, callbacks=self.training_callbacks)
                     train_time += time.time() - t_start
 
                     # Update target network and experience buffer
+                    u_start = time.time()
                     loss = hist.history['loss'][0]
                     l_total += loss
+                    sum_time += time.time() - u_start
+
                     b_start = time.time()
                     for i in range(self.batch_size):
                         self.experience_buffer.update_errors(indices[i], loss)
                     buff_time += time.time() - b_start
             if iteration % 1000 == 0:
-                print("Iteration: {0}/{1} - Total Time: {2:.2f}s - Total Train Time: {3:.2f}s - loss: {4:.4f}".format(
-                    iteration, self.episode_length, time.time() - start_time, train_time, loss))
-                print("Simulation Time: {0:.2f}s - Data Time: {1:.2f}s - Buffer Time: {2:.2f}s".format(
-                    sim_time, data_time, buff_time))
+                print("Iteration: {0}/{1} - Total Time: {2:.2f}s - Total Time Delta: {3:.2f}s - Total Train Time: {4:.2f}s - loss: {5:.4f}".format(
+                    iteration, self.episode_length, time.time() - start_time, time.time() - last_time, train_time, loss))
+                print("Simulation Time: {0:.2f}s - Data Time: {1:.2f}s - Buffer Time: {2:.2f}s - Summary Time: {3:.3f}s".format(
+                    sim_time, data_time, buff_time, sum_time))
                 print("Simulation Play: {0:.2f}s - Simulation Remember: {1:.2f}s".format(self.sim_play, self.sim_remember))
                 print("Data Batch: {0:.2f}s - Data Samples: {1:.2f}s".format(data_batch, data_samples))
-                print("Target Predict Main: {0:.2f}s - Target Predict Dual: {1:.2f}s - Target Compute Reward: {2:.2f}s - Target Compute Qs: {3:.2f}s".format(
-                    self.targ_pred_main, self.targ_pred_dual, self.targ_comp_rw, self.targ_comp_qs))
-                print("Experience Batch: {0:.2f}s - Experience Error: {1:.2f}s - Experience Add: {2:.2f}s".format(
-                    self.exp_batch, self.exp_error, self.exp_add))
+                print("Experience Fake Sample: {3:.2f}s - Experience Batch: {0:.2f}s - Experience Error: {1:.2f}s - Experience Add: {2:.2f}s".format(
+                    self.exp_batch, self.exp_error, self.exp_add, self.exp_samp))
                 print("")
                 self.train_target()
 
+                last_time = time.time()
                 train_time = 0
                 sim_time = 0; data_time = 0; buff_time = 0
                 data_batch = 0; data_samples = 0
                 self.sim_play = 0; self.sim_remember = 0
-                self.targ_pred_main = 0; self.targ_pred_dual = 0; self.targ_comp_rw = 0; self.targ_comp_qs = 0
                 self.exp_batch = 0; self.exp_error = 0; self.exp_add = 0
 
         # Log statistics
+        tf.summary.scalar('reward', data=r_total, step=episode)
+        tf.summary.scalar('loss', data=l_total / iteration, step=episode)
         self.total_reward_list.append(r_total)
         self.avg_loss_list.append(l_total / iteration)
 

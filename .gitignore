@@ -10,6 +10,7 @@ __pycache__/
 bot/*/
 logs/
 plots/
+checkpoints/
 
 # Distribution / packaging
 .Python

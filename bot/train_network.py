@@ -7,7 +7,7 @@ from util.prioritized_experience_replay import PrioritizedExperienceReplay
 
 import time
 
-NUM_EPISODES = 3
+NUM_EPISODES = 50
 
 if __name__ == '__main__':
     env = TetrisEnvironment(time_limit=10000)
@@ -20,7 +20,7 @@ if __name__ == '__main__':
         start = time.time()
         for i in range(NUM_EPISODES):
             print("Training Episode {}".format(i+1))
-            trainer.step_episode()
+            trainer.step_episode(i)
             trainer.save_model(i + 1)
         print("FINISHED TRAINING")
         print("Training took: {}".format(time.time() - start))
